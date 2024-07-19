@@ -60,7 +60,6 @@
         let bullets = [];
         const tempVector = new THREE.Vector3();
         let gunSound, walkingSound;
-        let composer, effectFXAA, bloomPass;
 
         function init() {
             scene = new THREE.Scene();
@@ -76,18 +75,6 @@
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.2;
             document.body.appendChild(renderer.domElement);
-
-            // Post-processing
-            composer = new THREE.EffectComposer(renderer);
-            const renderPass = new THREE.RenderPass(scene, camera);
-            composer.addPass(renderPass);
-
-            effectFXAA = new THREE.ShaderPass(THREE.FXAAShader);
-            effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
-            composer.addPass(effectFXAA);
-
-            bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
-            composer.addPass(bloomPass);
 
             // Lighting
             const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
@@ -126,7 +113,6 @@
         }
 
         function createGun() {
-            // ... (gun creation code remains the same)
             const gunGroup = new THREE.Group();
 
             // Gun body
@@ -226,191 +212,139 @@
             groundNormalMap.repeat.set(100, 100);
 
             const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
-            const groundMaterial = new THREE.MeshStandardMaterial({ 
+            const groundMaterial = new THREE.MeshStandardMaterial({
                 map: groundTexture,
                 normalMap: groundNormalMap,
-                roughness: 0.8,
-                metalness: 0.2,
+                roughness: 0.8
             });
             const ground = new THREE.Mesh(groundGeometry, groundMaterial);
             ground.rotation.x = -Math.PI / 2;
             ground.receiveShadow = true;
             scene.add(ground);
 
-            // Trees (using more detailed textures)
-            const treeMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x1a3300, 
-                roughness: 0.9,
-                normalMap: textureLoader.load('https://example.com/tree_normal_map.jpg'),
-                roughnessMap: textureLoader.load('https://example.com/tree_roughness_map.jpg'),
+            // Procedural Terrain
+            const terrainGeometry = new THREE.PlaneGeometry(1000, 1000, 100, 100);
+            const terrainMaterial = new THREE.MeshStandardMaterial({
+                map: groundTexture,
+                normalMap: groundNormalMap,
+                roughness: 0.8,
+                wireframe: false,
             });
 
+            for (let i = 0; i < terrainGeometry.attributes.position.count; i++) {
+                const x = terrainGeometry.attributes.position.getX(i);
+                const y = terrainGeometry.attributes.position.getY(i);
+                const height = simplex.noise2D(x / 50, y / 50) * 10;
+                terrainGeometry.attributes.position.setZ(i, height);
+            }
+
+            terrainGeometry.computeVertexNormals();
+            const terrain = new THREE.Mesh(terrainGeometry, terrainMaterial);
+            terrain.rotation.x = -Math.PI / 2;
+            terrain.position.y = -0.5;
+            terrain.receiveShadow = true;
+            scene.add(terrain);
+
+            // Trees
             for (let i = 0; i < 100; i++) {
-                // ... (tree creation code remains similar, with added detail)
-                const treeGroup = new THREE.Group();
-                const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 5, 8);
-                const trunk = new THREE.Mesh(trunkGeometry, treeMaterial);
-                trunk.position.y = 2.5;
-                treeGroup.add(trunk);
-
-                const branchMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0x0d1a00, 
-                    roughness: 1,
-                    normalMap: new THREE.TextureLoader().load('https://example.com/branch_normal_map.jpg')
-                });
-                for (let j = 0; j < 20; j++) {
-                    const branchGeometry = new THREE.CylinderGeometry(0.05, 0.02, 2, 4);
-                    const branch = new THREE.Mesh(branchGeometry, branchMaterial);
-                    branch.position.y = Math.random() * 4 + 1;
-                    branch.rotation.z = Math.random() * Math.PI;
-                    branch.rotation.y = Math.random() * Math.PI * 2;
-                    treeGroup.add(branch);
-                }
-
-                treeGroup.position.set(
-                    Math.random() * 200 - 100,
-                    0,
-                    Math.random() * 200 - 100
-                );
-                const scale = Math.random() * 0.5 + 0.5;
-                treeGroup.scale.set(scale, scale, scale);
-
-                treeGroup.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-
-                scene.add(treeGroup);
+                const tree = createTree();
+                const x = (Math.random() - 0.5) * 500;
+                const z = (Math.random() - 0.5) * 500;
+                const y = getTerrainHeight(x, z, terrainGeometry);
+                tree.position.set(x, y, z);
+                scene.add(tree);
             }
+        }
 
-            // Buildings (with more post-apocalyptic appearance)
-            const buildingTexture = textureLoader.load('https://i.postimg.cc/Zqq9J6DP/images-5.jpg');
-            const buildingNormalMap = textureLoader.load('https://example.com/building_normal_map.jpg');
-            const buildingRoughnessMap = textureLoader.load('https://example.com/building_roughness_map.jpg');
+        function getTerrainHeight(x, z, terrainGeometry) {
+            const vertices = terrainGeometry.attributes.position.array;
+            const segmentSize = 1000 / (terrainGeometry.parameters.widthSegments + 1);
+            const col = Math.floor((x + 500) / segmentSize);
+            const row = Math.floor((z + 500) / segmentSize);
+            const index = (row * (terrainGeometry.parameters.widthSegments + 1) + col) * 3 + 2;
+            return vertices[index];
+        }
 
-            const buildingMaterial = new THREE.MeshStandardMaterial({ 
-                map: buildingTexture,
-                normalMap: buildingNormalMap,
-                roughnessMap: buildingRoughnessMap,
-                roughness: 0.7, 
-                metalness: 0.2,
-            });
+        function createTree() {
+            const treeGroup = new THREE.Group();
 
-            for (let i = 0; i < 20; i++) {
-                const buildingGroup = new THREE.Group();
-                const baseGeometry = new THREE.BoxGeometry(10, 20, 10);
-                const base = new THREE.Mesh(baseGeometry, buildingMaterial);
-                base.position.y = 10;
-                buildingGroup.add(base);
+            const trunkGeometry = new THREE.CylinderGeometry(0.5, 0.5, 10);
+            const trunkMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(trunkGeometry, trunkMaterial);
+            trunk.position.y = 5;
+            trunk.castShadow = true;
+            treeGroup.add(trunk);
 
-                // Add more detailed structural damage
-                for (let j = 0; j < 10; j++) {
-                    const damageGeometry = new THREE.SphereGeometry(2, 16, 16);
-                    const damageMesh = new THREE.Mesh(damageGeometry, buildingMaterial);
-                    damageMesh.position.set(
-                        (Math.random() - 0.5) * 10,
-                        Math.random() * 20,
-                        (Math.random() - 0.5) * 10
-                    );
-                    base.updateMatrix();
-                    buildingGroup.add(damageMesh);
-                }
+            const leavesGeometry = new THREE.SphereGeometry(4, 8, 8);
+            const leavesMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+            const leaves = new THREE.Mesh(leavesGeometry, leavesMaterial);
+            leaves.position.y = 10;
+            leaves.castShadow = true;
+            treeGroup.add(leaves);
 
-                // Add debris
-                for (let k = 0; k < 20; k++) {
-                    const debrisGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-                    const debrisMesh = new THREE.Mesh(debrisGeometry, buildingMaterial);
-                    debrisMesh.position.set(
-                        (Math.random() - 0.5) * 15,
-                        Math.random() * 2,
-                        (Math.random() - 0.5) * 15
-                    );
-                    debrisMesh.rotation.set(
-                        Math.random() * Math.PI,
-                        Math.random() * Math.PI,
-                        Math.random() * Math.PI
-                    );
-                    buildingGroup.add(debrisMesh);
-                }
-
-                buildingGroup.position.set(
-                    Math.random() * 200 - 100,
-                    0,
-                    Math.random() * 200 - 100
-                );
-                buildingGroup.rotation.y = Math.random() * Math.PI * 2;
-                buildingGroup.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        child.castShadow = true;
-                        child.receiveShadow = true;
-                    }
-                });
-                scene.add(buildingGroup);
-            }
-
-            // Add abandoned vehicles
-            const carGeometry = new THREE.BoxGeometry(4, 2, 2);
-            const carMaterial = new THREE.MeshStandardMaterial({
-                color: 0x333333,
-                roughness: 0.7,
-                metalness: 0.3,
-            });
-
-            for (let i = 0; i < 30; i++) {
-                const car = new THREE.Mesh(carGeometry, carMaterial);
-                car.position.set(
-                    Math.random() * 200 - 100,
-                    1,
-                    Math.random() * 200 - 100
-                );
-                car.rotation.y = Math.random() * Math.PI * 2;
-                car.castShadow = true;
-                car.receiveShadow = true;
-                scene.add(car);
-            }
-
-            // Fog for atmosphere (more dense for post-apocalyptic feel)
-            scene.fog = new THREE.FogExp2(0x000000, 0.015);
+            return treeGroup;
         }
 
         function setupControls() {
-            // ... (controls setup remains the same)
-            document.addEventListener('keydown', onKeyDown, false);
-            document.addEventListener('keyup', onKeyUp, false);
-            document.addEventListener('mousemove', onMouseMove, false);
-            document.addEventListener('click', onMouseClick, false);
-            renderer.domElement.addEventListener('click', () => {
-                renderer.domElement.requestPointerLock();
+            document.addEventListener('keydown', (event) => {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = true;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = true;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = true;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = true;
+                        break;
+                }
+            });
+
+            document.addEventListener('keyup', (event) => {
+                switch (event.code) {
+                    case 'ArrowUp':
+                    case 'KeyW':
+                        moveForward = false;
+                        break;
+                    case 'ArrowLeft':
+                    case 'KeyA':
+                        moveLeft = false;
+                        break;
+                    case 'ArrowDown':
+                    case 'KeyS':
+                        moveBackward = false;
+                        break;
+                    case 'ArrowRight':
+                    case 'KeyD':
+                        moveRight = false;
+                        break;
+                }
             });
         }
 
         function setupJoystick() {
-            // ... (joystick setup remains the same)
+            const joystickContainer = document.getElementById('joystick-container');
             const joystick = nipplejs.create({
-                zone: document.getElementById('joystick-container'),
+                zone: joystickContainer,
                 mode: 'static',
-                position: { left: '50%', bottom: '50%' },
-                color: 'white'
+                position: { left: '50%', top: '50%' },
+                color: 'blue',
             });
 
-            joystick.on('move', (evt, data) => {
-                const angle = data.angle.degree;
-                moveForward = false;
-                moveBackward = false;
-                moveLeft = false;
-                moveRight = false;
-
-                if (angle >= 45 && angle < 135) {
-                    moveForward = true;
-                } else if (angle >= 135 && angle < 225) {
-                  moveLeft = true;
-                } else if (angle >= 225 && angle < 315) {
-                    moveBackward = true;
-                } else {
-                    moveRight = true;
-                }
+            joystick.on('move', (event, data) => {
+                const forward = data.vector.y;
+                const strafe = data.vector.x;
+                moveForward = forward < -0.5;
+                moveBackward = forward > 0.5;
+                moveLeft = strafe < -0.5;
+                moveRight = strafe > 0.5;
             });
 
             joystick.on('end', () => {
@@ -419,70 +353,28 @@
                 moveLeft = false;
                 moveRight = false;
             });
-                                             }
+        }
 
         function setupShootButton() {
-            // ... (shoot button setup remains the same)
             const shootButton = document.getElementById('shoot-button');
-            shootButton.addEventListener('click', shoot);
-            shootButton.addEventListener('touchstart', shoot);
+            shootButton.addEventListener('mousedown', shoot);
         }
 
-        function onMouseMove(event) {
-            if (document.pointerLockElement === renderer.domElement) {
-                const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
-                const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
-                camera.rotation.y -= movementX * 0.002;
-                camera.rotation.x -= movementY * 0.002;
-                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
-            }
+        function shoot() {
+            const bullet = createBullet();
+            bullet.position.copy(gun.position);
+            bullet.quaternion.copy(camera.quaternion);
+            bullets.push(bullet);
+            scene.add(bullet);
+
+            if (gunSound.isPlaying) gunSound.stop();
+            gunSound.play();
         }
 
-        function onMouseClick() {
-            shoot();
-        }
-
-        function onKeyDown(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = true;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = true;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = true;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = true;
-                    break;
-            }
-        }
-
-        function onKeyUp(event) {
-            switch (event.code) {
-                case 'ArrowUp':
-                case 'KeyW':
-                    moveForward = false;
-                    break;
-                case 'ArrowLeft':
-                case 'KeyA':
-                    moveLeft = false;
-                    break;
-                case 'ArrowDown':
-                case 'KeyS':
-                    moveBackward = false;
-                    break;
-                case 'ArrowRight':
-                case 'KeyD':
-                    moveRight = false;
-                    break;
-            }
-        
+        function createBullet() {
+            const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const bulletMaterial = new THREE.MeshStandardMaterial({ color: 0xFFD700 });
+            return new THREE.Mesh(bulletGeometry, bulletMaterial);
         }
 
         function loadSound(url) {
@@ -490,71 +382,11 @@
             camera.add(listener);
             const sound = new THREE.Audio(listener);
             const audioLoader = new THREE.AudioLoader();
-            audioLoader.load(url, function(buffer) {
+            audioLoader.load(url, (buffer) => {
                 sound.setBuffer(buffer);
                 sound.setVolume(0.5);
             });
             return sound;
-        }
-
-        function shoot() {
-            // ... (shooting logic remains similar
-            const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
-            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
-            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-            bullet.position.set(0, 0, 0);
-            bullet.rotation.copy(camera.rotation);
-            bullet.scale.set(1, 1, 1);
-            camera.add(bullet);
-            scene.add(camera);
-
-            bullet.velocity = new THREE.Vector3(0, 0, -1);
-            bullet.velocity.applyQuaternion(camera.quaternion);
-            bullet.velocity.multiplyScalar(10);
-
-            bullets.push({
-                mesh: bullet,
-                velocity: bullet.velocity,
-                born: performance.now()
-            });
-
-            // Muzzle flash
-            const flashGeometry = new THREE.SphereGeometry(0.1, 8, 8);
-            const flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.8 });
-            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
-            flash.position.set(0, 0, -0.5);
-            gun.add(flash);
-
-            setTimeout(() => {
-                gun.remove(flash);
-            }, 50);
-
-            // Recoil effect
-            gun.position.z += 0.1;
-            setTimeout(() => {
-                gun.position.z -= 0.1;
-            }, 50);
-            
-            
-            // Play gunshot sound with improved handling
-            if (gunSound.isPlaying) {
-                gunSound.stop();
-            }
-            gunSound.play();
-        }
-
-        function updateBullets(delta) {
-            // ... (bullet update logic remains the same)
-            for (let i = bullets.length - 1; i >= 0; i--) {
-                const bullet = bullets[i];
-                bullet.mesh.position.add(bullet.velocity.clone().multiplyScalar(delta));
-
-                // Remove bullets after 1 second
-                if (performance.now() - bullet.born > 1000) {
-                    scene.remove(bullet.mesh);
-                    bullets.splice(i, 1);
-                }
-            }
         }
 
         function animate() {
@@ -570,11 +402,23 @@
             direction.x = Number(moveRight) - Number(moveLeft);
             direction.normalize();
 
-            if (moveForward || moveBackward) velocity.z -= direction.z * 70.0 * delta;
-            if (moveLeft || moveRight) velocity.x = direction.x * 400.0 * delta;
+            if (moveForward || moveBackward) velocity.z -= direction.z * 400.0 * delta;
+            if (moveLeft || moveRight) velocity.x -= direction.x * 400.0 * delta;
 
-            // Simple collision detection
+            camera.translateX(velocity.x * delta);
+            camera.translateZ(velocity.z * delta);
+
+            bullets.forEach((bullet, index) => {
+                bullet.translateZ(-1);
+                if (bullet.position.distanceTo(camera.position) > 100) {
+                    scene.remove(bullet);
+                    bullets.splice(index, 1);
+                }
+            });
+
             raycaster.ray.origin.copy(camera.position);
+            raycaster.ray.origin.y -= 10;
+
             const intersections = raycaster.intersectObjects(scene.children, true);
             const onObject = intersections.length > 0;
 
@@ -582,213 +426,17 @@
                 velocity.y = Math.max(0, velocity.y);
             }
 
-            camera.translateX(velocity.x * delta);
-            camera.translateZ(velocity.z * delta);
-
-            // Update torch position and direction
-            gun.getWorldPosition(torchLight.position);
-            gun.getWorldDirection(tempVector);
-            tempVector.multiplyScalar(10);
-            tempVector.add(torchLight.position);
-            torchLight.target.position.copy(tempVector);
-
-            // Ultra-realistic torch flicker effect
-            const flicker = simplex.noise2D(time * 0.01, 0) * 0.3 + 1;
-            torchLight.intensity = 2 * flicker;
-            torchLight.angle = (Math.PI / 6) * (0.9 + flicker * 0.1);
-
-            // Dynamic color temperature
-            const colorTemp = 3000 + flicker * 1000; // Range: 3000K to 4000K
-            torchLight.color.setHex(temperatureToHex(colorTemp));
-
-            // Gun and torch sway
-            const sway = Math.sin(time * 0.002) * 0.005;
-            gun.position.y = -0.2 + sway;
-            gun.rotation.x = sway * 2;
-
-            // Update bullets
-            updateBullets(delta);
-
-            // Play walking sound
-            if (moveForward || moveBackward || moveLeft || moveRight) {
-                if (!walkingSound.isPlaying) {
-                    walkingSound.play();
-                }
-            } else {
-                if (walkingSound.isPlaying) {
-                    walkingSound.pause();
-                }
-            }
-
+            renderer.render(scene, camera);
             prevTime = time;
-
-            // Use the composer to render the scene with post-processing effects
-            composer.render();
-        }
-
-        // Helper function to convert color temperature to hex
-        function temperatureToHex(kelvin) {
-            // ... (temperature to hex conversion remains the same)
-            const temp = kelvin / 100;
-            let red, green, blue;
-
-            if (temp <= 66) {
-                red = 255;
-                green = temp;
-                green = 99.4708025861 * Math.log(green) - 161.1195681661;
-                blue = temp <= 19 ? 0 : temp - 10;
-                blue = 138.5177312231 * Math.log(blue) - 305.0447927307;
-            } else {
-                red = temp - 60;
-                red = 329.698727446 * Math.pow(red, -0.1332047592);
-                green = temp - 60;
-                green = 288.1221695283 * Math.pow(green, -0.0755148492);
-                blue = 255;
-            }
-
-            return ((Math.min(Math.max(red, 0), 255) * 256 * 256) +
-                    (Math.min(Math.max(green, 0), 255) * 256) +
-                    Math.min(Math.max(blue, 0), 255)) | 0;
         }
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-            composer.setSize(window.innerWidth, window.innerHeight);
-            effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
         });
 
-        // Add post-apocalyptic elements
-        function addPostApocalypticElements() {
-            const textureLoader = new THREE.TextureLoader();
-
-            // Add debris piles
-            const debrisGeometry = new THREE.ConeGeometry(2, 3, 4);
-            const debrisTexture = textureLoader.load('https://i.postimg.cc/vZcg8XCY/images-7.jpg');
-            const debrisMaterial = new THREE.MeshStandardMaterial({
-                map: debrisTexture,
-                roughness: 0.8,
-                metalness: 0.2
-            });
-
-            for (let i = 0; i < 50; i++) {
-                const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
-                debris.position.set(
-                    Math.random() * 200 - 100,
-                    0,
-                    Math.random() * 200 - 100
-                );
-                debris.rotation.y = Math.random() * Math.PI * 2;
-                debris.scale.set(
-                    Math.random() * 0.5 + 0.5,
-                    Math.random() * 0.5 + 0.5,
-                    Math.random() * 0.5 + 0.5
-                );
-                debris.castShadow = true;
-                debris.receiveShadow = true;
-                scene.add(debris);
-            }
-
-            // Add destroyed infrastructure (e.g., broken bridge)
-            const bridgeGeometry = new THREE.BoxGeometry(30, 2, 10);
-            const bridgeTexture = textureLoader.load('https://example.com/concrete_texture.jpg');
-            const bridgeMaterial = new THREE.MeshStandardMaterial({
-                map: bridgeTexture,
-                roughness: 0.7,
-                metalness: 0.3
-            });
-
-            const brokenBridge = new THREE.Group();
-
-            const bridgePart1 = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
-            bridgePart1.position.set(-10, 10, 0);
-            bridgePart1.rotation.z = Math.PI / 12;
-            brokenBridge.add(bridgePart1);
-
-            const bridgePart2 = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
-            bridgePart2.position.set(10, 8, 0);
-            bridgePart2.rotation.z = -Math.PI / 12;
-            brokenBridge.add(bridgePart2);
-
-            brokenBridge.position.set(0, 0, -50);
-            brokenBridge.castShadow = true;
-            brokenBridge.receiveShadow = true;
-            scene.add(brokenBridge);
-
-            // Add apocalyptic skybox
-            const skyboxLoader = new THREE.CubeTextureLoader();
-            const skyboxTexture = skyboxLoader.load([
-                'https://example.com/apocalyptic_skybox_right.jpg',
-                'https://example.com/apocalyptic_skybox_left.jpg',
-                'https://example.com/apocalyptic_skybox_top.jpg',
-                'https://example.com/apocalyptic_skybox_bottom.jpg',
-                'https://example.com/apocalyptic_skybox_front.jpg',
-                'https://example.com/apocalyptic_skybox_back.jpg'
-            ]);
-            scene.background = skyboxTexture;
-        }
-
-        // Enhance graphics with more detailed textures and effects
-        function enhanceGraphics() {
-            // Update existing materials with more detailed textures
-            scene.traverse((object) => {
-                if (object.isMesh && object.material.map) {
-                    const textureLoader = new THREE.TextureLoader();
-                    object.material.normalMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_normal.jpg'));
-                    object.material.roughnessMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_roughness.jpg'));
-                    object.material.aoMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_ao.jpg'));
-                    object.material.needsUpdate = true;
-                }
-            });
-
-            // Add particle system for atmospheric dust
-            const particlesGeometry = new THREE.BufferGeometry();
-            const particleCount = 5000;
-            const posArray = new Float32Array(particleCount * 3);
-
-            for (let i = 0; i < particleCount * 3; i++) {
-                posArray[i] = (Math.random() - 0.5) * 200;
-            }
-
-            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-
-            const particlesMaterial = new THREE.PointsMaterial({
-                size: 0.05,
-                color: 0xAAAAAA,
-                transparent: true,
-                opacity: 0.5,
-                blending: THREE.AdditiveBlending
-            });
-
-            const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
-            scene.add(particlesMesh);
-
-            // Animate particles
-            function animateParticles() {
-                particlesMesh.rotation.y += 0.0001;
-                requestAnimationFrame(animateParticles);
-            }
-            animateParticles();
-
-            // Enhance post-processing effects
-            bloomPass.strength = 0.75;
-            bloomPass.radius = 0.5;
-            bloomPass.threshold = 0.3;
-
-            const filmPass = new THREE.FilmPass(0.35, 0.025, 648, false);
-            composer.addPass(filmPass);
-
-            const vignettePass = new THREE.ShaderPass(THREE.VignetteShader);
-            vignettePass.uniforms['darkness'].value = 1.5;
-            vignettePass.uniforms['offset'].value = 0.7;
-            composer.addPass(vignettePass);
-        }
-
-        // Initialize the game
         init();
-        addPostApocalypticElements();
-        enhanceGraphics();
         animate();
     </script>
 </body>
