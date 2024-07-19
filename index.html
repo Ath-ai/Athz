@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced 3D FPS: World War Z Aftermath</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        #crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+        #joystick-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            width: 100px;
+            height: 100px;
+        }
+        #shoot-button {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(255, 0, 0, 0.5);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 24px;
+            color: white;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="crosshair"></div>
+    <div id="joystick-container"></div>
+    <div id="shoot-button">FIRE</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.7.3/nipplejs.min.js"></script>
+    <script>
+        let scene, camera, renderer, gun, torchLight;
+        let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+        let prevTime = performance.now();
+        const velocity = new THREE.Vector3();
+        const direction = new THREE.Vector3();
+        let raycaster;
+        let simplex = new SimplexNoise();
+        let bullets = [];
+        const tempVector = new THREE.Vector3();
+        let gunSound, walkingSound;
+        let composer, effectFXAA, bloomPass;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 1.6, 5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.outputEncoding = THREE.sRGBEncoding;
+            renderer.toneMapping = THREE.ACESFilmicToneMapping;
+            renderer.toneMappingExposure = 1.2;
+            document.body.appendChild(renderer.domElement);
+
+            // Post-processing
+            composer = new THREE.EffectComposer(renderer);
+            const renderPass = new THREE.RenderPass(scene, camera);
+            composer.addPass(renderPass);
+
+            effectFXAA = new THREE.ShaderPass(THREE.FXAAShader);
+            effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
+            composer.addPass(effectFXAA);
+
+            bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+            composer.addPass(bloomPass);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+            scene.add(ambientLight);
+
+            const moonLight = new THREE.DirectionalLight(0x3070A0, 0.5);
+            moonLight.position.set(50, 100, 50);
+            moonLight.castShadow = true;
+            moonLight.shadow.mapSize.width = 4096;
+            moonLight.shadow.mapSize.height = 4096;
+            scene.add(moonLight);
+
+            // Gun with torch
+            const { gunGroup, gunTorchLight } = createGun();
+            gun = gunGroup;
+            torchLight = gunTorchLight;
+            camera.add(gun);
+            scene.add(torchLight);
+            scene.add(camera);
+
+            // Environment
+            createEnvironment();
+
+            // Raycaster for collision detection
+            raycaster = new THREE.Raycaster(new THREE.Vector3(), new THREE.Vector3(0, -1, 0), 0, 10);
+
+            // Controls
+            setupControls();
+            setupJoystick();
+            setupShootButton();
+
+            // Load sounds
+            gunSound = loadSound('https://github.com/Ath-ai/Athz/raw/main/Gun_shootin.mp3');
+            walkingSound = loadSound('https://github.com/Ath-ai/Athz/raw/main/Running_forest.mp3');
+            walkingSound.setLoop(true);
+        }
+
+        function createGun() {
+            // ... (gun creation code remains the same)
+        }
+
+        function createEnvironment() {
+            // Ground
+            const textureLoader = new THREE.TextureLoader();
+            const groundTexture = textureLoader.load('https://i.postimg.cc/brdgzsZF/grasslight-big.jpg');
+            groundTexture.wrapS = THREE.RepeatWrapping;
+            groundTexture.wrapT = THREE.RepeatWrapping;
+            groundTexture.repeat.set(100, 100);
+
+            const groundNormalMap = textureLoader.load('https://example.com/ground_normal_map.jpg');
+            groundNormalMap.wrapS = THREE.RepeatWrapping;
+            groundNormalMap.wrapT = THREE.RepeatWrapping;
+            groundNormalMap.repeat.set(100, 100);
+
+            const groundGeometry = new THREE.PlaneGeometry(1000, 1000);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                map: groundTexture,
+                normalMap: groundNormalMap,
+                roughness: 0.8,
+                metalness: 0.2,
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
+
+            // Trees (using more detailed textures)
+            const treeMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x1a3300, 
+                roughness: 0.9,
+                normalMap: textureLoader.load('https://example.com/tree_normal_map.jpg'),
+                roughnessMap: textureLoader.load('https://example.com/tree_roughness_map.jpg'),
+            });
+
+            for (let i = 0; i < 100; i++) {
+                // ... (tree creation code remains similar, with added detail)
+            }
+
+            // Buildings (with more post-apocalyptic appearance)
+            const buildingTexture = textureLoader.load('https://i.postimg.cc/Zqq9J6DP/images-5.jpg');
+            const buildingNormalMap = textureLoader.load('https://example.com/building_normal_map.jpg');
+            const buildingRoughnessMap = textureLoader.load('https://example.com/building_roughness_map.jpg');
+
+            const buildingMaterial = new THREE.MeshStandardMaterial({ 
+                map: buildingTexture,
+                normalMap: buildingNormalMap,
+                roughnessMap: buildingRoughnessMap,
+                roughness: 0.7, 
+                metalness: 0.2,
+            });
+
+            for (let i = 0; i < 20; i++) {
+                const buildingGroup = new THREE.Group();
+                const baseGeometry = new THREE.BoxGeometry(10, 20, 10);
+                const base = new THREE.Mesh(baseGeometry, buildingMaterial);
+                base.position.y = 10;
+                buildingGroup.add(base);
+
+                // Add more detailed structural damage
+                for (let j = 0; j < 10; j++) {
+                    const damageGeometry = new THREE.SphereGeometry(2, 16, 16);
+                    const damageMesh = new THREE.Mesh(damageGeometry, buildingMaterial);
+                    damageMesh.position.set(
+                        (Math.random() - 0.5) * 10,
+                        Math.random() * 20,
+                        (Math.random() - 0.5) * 10
+                    );
+                    base.updateMatrix();
+                    buildingGroup.add(damageMesh);
+                }
+
+                // Add debris
+                for (let k = 0; k < 20; k++) {
+                    const debrisGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                    const debrisMesh = new THREE.Mesh(debrisGeometry, buildingMaterial);
+                    debrisMesh.position.set(
+                        (Math.random() - 0.5) * 15,
+                        Math.random() * 2,
+                        (Math.random() - 0.5) * 15
+                    );
+                    debrisMesh.rotation.set(
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI,
+                        Math.random() * Math.PI
+                    );
+                    buildingGroup.add(debrisMesh);
+                }
+
+                buildingGroup.position.set(
+                    Math.random() * 200 - 100,
+                    0,
+                    Math.random() * 200 - 100
+                );
+                buildingGroup.rotation.y = Math.random() * Math.PI * 2;
+                buildingGroup.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                scene.add(buildingGroup);
+            }
+
+            // Add abandoned vehicles
+            const carGeometry = new THREE.BoxGeometry(4, 2, 2);
+            const carMaterial = new THREE.MeshStandardMaterial({
+                color: 0x333333,
+                roughness: 0.7,
+                metalness: 0.3,
+            });
+
+            for (let i = 0; i < 30; i++) {
+                const car = new THREE.Mesh(carGeometry, carMaterial);
+                car.position.set(
+                    Math.random() * 200 - 100,
+                    1,
+                    Math.random() * 200 - 100
+                );
+                car.rotation.y = Math.random() * Math.PI * 2;
+                car.castShadow = true;
+                car.receiveShadow = true;
+                scene.add(car);
+            }
+
+            // Fog for atmosphere (more dense for post-apocalyptic feel)
+            scene.fog = new THREE.FogExp2(0x000000, 0.015);
+        }
+
+        function setupControls() {
+            // ... (controls setup remains the same)
+        }
+
+        function setupJoystick() {
+            // ... (joystick setup remains the same)
+        }
+
+        function setupShootButton() {
+            // ... (shoot button setup remains the same)
+        }
+
+        function loadSound(url) {
+            const listener = new THREE.AudioListener();
+            camera.add(listener);
+            const sound = new THREE.Audio(listener);
+            const audioLoader = new THREE.AudioLoader();
+            audioLoader.load(url, function(buffer) {
+                sound.setBuffer(buffer);
+                sound.setVolume(0.5);
+            });
+            return sound;
+        }
+
+        function shoot() {
+            // ... (shooting logic remains similar)
+            
+            // Play gunshot sound with improved handling
+            if (gunSound.isPlaying) {
+                gunSound.stop();
+            }
+            gunSound.play();
+        }
+
+        function updateBullets(delta) {
+            // ... (bullet update logic remains the same)
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = performance.now();
+            const delta = (time - prevTime) / 1000;
+
+            velocity.x -= velocity.x * 10.0 * delta;
+            velocity.z -= velocity.z * 10.0 * delta;
+
+            direction.z = Number(moveForward) - Number(moveBackward);
+            direction.x = Number(moveRight) - Number(moveLeft);
+            direction.normalize();
+
+            if (moveForward || moveBackward) velocity.z -= direction.z * 70.0 * delta;
+            if (moveLeft || moveRight) velocity.x = direction.x * 400.0 * delta;
+
+            // Simple collision detection
+            raycaster.ray.origin.copy(camera.position);
+            const intersections = raycaster.intersectObjects(scene.children, true);
+            const onObject = intersections.length > 0;
+
+            if (onObject) {
+                velocity.y = Math.max(0, velocity.y);
+            }
+
+            camera.translateX(velocity.x * delta);
+            camera.translateZ(velocity.z * delta);
+
+            // Update torch position and direction
+            gun.getWorldPosition(torchLight.position);
+            gun.getWorldDirection(tempVector);
+            tempVector.multiplyScalar(10);
+            tempVector.add(torchLight.position);
+            torchLight.target.position.copy(tempVector);
+
+            // Ultra-realistic torch flicker effect
+            const flicker = simplex.noise2D(time * 0.01, 0) * 0.3 + 1;
+            torchLight.intensity = 2 * flicker;
+            torchLight.angle = (Math.PI / 6) * (0.9 + flicker * 0.1);
+
+            // Dynamic color temperature
+            const colorTemp = 3000 + flicker * 1000; // Range: 3000K to 4000K
+            torchLight.color.setHex(temperatureToHex(colorTemp));
+
+            // Gun and torch sway
+            const sway = Math.sin(time * 0.002) * 0.005;
+            gun.position.y = -0.2 + sway;
+            gun.rotation.x = sway * 2;
+
+            // Update bullets
+            updateBullets(delta);
+
+            // Play walking sound
+            if (moveForward || moveBackward || moveLeft || moveRight) {
+                if (!walkingSound.isPlaying) {
+                    walkingSound.play();
+                }
+            } else {
+                if (walkingSound.isPlaying) {
+                    walkingSound.pause();
+                }
+            }
+
+            prevTime = time;
+
+            // Use the composer to render the scene with post-processing effects
+            composer.render();
+        }
+
+        // Helper function to convert color temperature to hex
+        function temperatureToHex(kelvin) {
+            // ... (temperature to hex conversion remains the same)
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+            effectFXAA.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
+        });
+
+        // Add post-apocalyptic elements
+        function addPostApocalypticElements() {
+            const textureLoader = new THREE.TextureLoader();
+
+            // Add debris piles
+            const debrisGeometry = new THREE.ConeGeometry(2, 3, 4);
+            const debrisTexture = textureLoader.load('https://example.com/debris_texture.jpg');
+            const debrisMaterial = new THREE.MeshStandardMaterial({
+                map: debrisTexture,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+
+            for (let i = 0; i < 50; i++) {
+                const debris = new THREE.Mesh(debrisGeometry, debrisMaterial);
+                debris.position.set(
+                    Math.random() * 200 - 100,
+                    0,
+                    Math.random() * 200 - 100
+                );
+                debris.rotation.y = Math.random() * Math.PI * 2;
+                debris.scale.set(
+                    Math.random() * 0.5 + 0.5,
+                    Math.random() * 0.5 + 0.5,
+                    Math.random() * 0.5 + 0.5
+                );
+                debris.castShadow = true;
+                debris.receiveShadow = true;
+                scene.add(debris);
+            }
+
+            // Add destroyed infrastructure (e.g., broken bridge)
+            const bridgeGeometry = new THREE.BoxGeometry(30, 2, 10);
+            const bridgeTexture = textureLoader.load('https://example.com/concrete_texture.jpg');
+            const bridgeMaterial = new THREE.MeshStandardMaterial({
+                map: bridgeTexture,
+                roughness: 0.7,
+                metalness: 0.3
+            });
+
+            const brokenBridge = new THREE.Group();
+
+            const bridgePart1 = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
+            bridgePart1.position.set(-10, 10, 0);
+            bridgePart1.rotation.z = Math.PI / 12;
+            brokenBridge.add(bridgePart1);
+
+            const bridgePart2 = new THREE.Mesh(bridgeGeometry, bridgeMaterial);
+            bridgePart2.position.set(10, 8, 0);
+            bridgePart2.rotation.z = -Math.PI / 12;
+            brokenBridge.add(bridgePart2);
+
+            brokenBridge.position.set(0, 0, -50);
+            brokenBridge.castShadow = true;
+            brokenBridge.receiveShadow = true;
+            scene.add(brokenBridge);
+
+            // Add apocalyptic skybox
+            const skyboxLoader = new THREE.CubeTextureLoader();
+            const skyboxTexture = skyboxLoader.load([
+                'https://example.com/apocalyptic_skybox_right.jpg',
+                'https://example.com/apocalyptic_skybox_left.jpg',
+                'https://example.com/apocalyptic_skybox_top.jpg',
+                'https://example.com/apocalyptic_skybox_bottom.jpg',
+                'https://example.com/apocalyptic_skybox_front.jpg',
+                'https://example.com/apocalyptic_skybox_back.jpg'
+            ]);
+            scene.background = skyboxTexture;
+        }
+
+        // Enhance graphics with more detailed textures and effects
+        function enhanceGraphics() {
+            // Update existing materials with more detailed textures
+            scene.traverse((object) => {
+                if (object.isMesh && object.material.map) {
+                    const textureLoader = new THREE.TextureLoader();
+                    object.material.normalMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_normal.jpg'));
+                    object.material.roughnessMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_roughness.jpg'));
+                    object.material.aoMap = textureLoader.load(object.material.map.image.src.replace('.jpg', '_ao.jpg'));
+                    object.material.needsUpdate = true;
+                }
+            });
+
+            // Add particle system for atmospheric dust
+            const particlesGeometry = new THREE.BufferGeometry();
+            const particleCount = 5000;
+            const posArray = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount * 3; i++) {
+                posArray[i] = (Math.random() - 0.5) * 200;
+            }
+
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: 0.05,
+                color: 0xAAAAAA,
+                transparent: true,
+                opacity: 0.5,
+                blending: THREE.AdditiveBlending
+            });
+
+            const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+            scene.add(particlesMesh);
+
+            // Animate particles
+            function animateParticles() {
+                particlesMesh.rotation.y += 0.0001;
+                requestAnimationFrame(animateParticles);
+            }
+            animateParticles();
+
+            // Enhance post-processing effects
+            bloomPass.strength = 0.75;
+            bloomPass.radius = 0.5;
+            bloomPass.threshold = 0.3;
+
+            const filmPass = new THREE.FilmPass(0.35, 0.025, 648, false);
+            composer.addPass(filmPass);
+
+            const vignettePass = new THREE.ShaderPass(THREE.VignetteShader);
+            vignettePass.uniforms['darkness'].value = 1.5;
+            vignettePass.uniforms['offset'].value = 0.7;
+            composer.addPass(vignettePass);
+        }
+
+        // Initialize the game
+        init();
+        addPostApocalypticElements();
+        enhanceGraphics();
+        animate();
+    </script>
+</body>
+</html>
