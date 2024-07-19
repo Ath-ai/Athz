@@ -127,6 +127,89 @@
 
         function createGun() {
             // ... (gun creation code remains the same)
+            const gunGroup = new THREE.Group();
+
+            // Gun body
+            const bodyGeometry = new THREE.BoxGeometry(0.1, 0.15, 0.4);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x333333, 
+                roughness: 0.5, 
+                metalness: 0.7,
+                normalMap: new THREE.TextureLoader().load('https://example.com/gun_normal_map.jpg')
+            });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            gunGroup.add(body);
+
+            // Gun barrel
+            const barrelGeometry = new THREE.CylinderGeometry(0.02, 0.02, 0.4, 16);
+            const barrelMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x222222, 
+                roughness: 0.3, 
+                metalness: 0.8,
+                normalMap: new THREE.TextureLoader().load('https://example.com/barrel_normal_map.jpg')
+            });
+            const barrel = new THREE.Mesh(barrelGeometry, barrelMaterial);
+            barrel.rotation.z = Math.PI / 2;
+            barrel.position.set(0, 0.05, 0.2);
+            gunGroup.add(barrel);
+
+            // Gun handle
+            const handleGeometry = new THREE.BoxGeometry(0.05, 0.15, 0.1);
+            const handleMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x8B4513, 
+                roughness: 0.8, 
+                metalness: 0.2,
+                normalMap: new THREE.TextureLoader().load('https://example.com/handle_normal_map.jpg')
+            });
+            const handle = new THREE.Mesh(handleGeometry, handleMaterial);
+            handle.position.set(0, -0.15, 0);
+            gunGroup.add(handle);
+
+            // Gun sight
+            const sightGeometry = new THREE.BoxGeometry(0.02, 0.04, 0.02);
+            const sightMaterial = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5, metalness: 0.5 });
+            const sight = new THREE.Mesh(sightGeometry, sightMaterial);
+            sight.position.set(0, 0.09, -0.15);
+            gunGroup.add(sight);
+
+            // Torch
+            const torchGeometry = new THREE.CylinderGeometry(0.02, 0.025, 0.1, 16);
+            const torchMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x333333,
+                roughness: 0.7,
+                metalness: 0.3,
+                normalMap: new THREE.TextureLoader().load('https://example.com/torch_normal_map.jpg')
+            });
+            const torch = new THREE.Mesh(torchGeometry, torchMaterial);
+            torch.rotation.x = Math.PI / 2;
+            torch.position.set(0, 0.08, 0.2);
+            gunGroup.add(torch);
+
+            // Torch lens
+            const lensGeometry = new THREE.SphereGeometry(0.025, 16, 16, 0, Math.PI);
+            const lensMaterial = new THREE.MeshPhysicalMaterial({
+                color: 0xFFFFFF,
+                transparent: true,
+                opacity: 0.9,
+                roughness: 0.1,
+                transmission: 0.9,
+                thickness: 0.05,
+            });
+            const lens = new THREE.Mesh(lensGeometry, lensMaterial);
+            lens.rotation.x = -Math.PI / 2;
+            lens.position.set(0, 0.08, 0.25);
+            gunGroup.add(lens);
+
+            // Torch light
+            const torchLight = new THREE.SpotLight(0xFFAA00, 2, 50, Math.PI / 6, 0.5, 1);
+            torchLight.position.set(0, 0.08, 0.25);
+            gunGroup.add(torchLight);
+            gunGroup.add(torchLight.target);
+            torchLight.target.position.set(0, 0.08, 1);
+
+            gunGroup.position.set(0.2, -0.2, -0.3);
+
+            return { gunGroup, gunTorchLight: torchLight };
         }
 
         function createEnvironment() {
@@ -164,6 +247,42 @@
 
             for (let i = 0; i < 100; i++) {
                 // ... (tree creation code remains similar, with added detail)
+                const treeGroup = new THREE.Group();
+                const trunkGeometry = new THREE.CylinderGeometry(0.2, 0.3, 5, 8);
+                const trunk = new THREE.Mesh(trunkGeometry, treeMaterial);
+                trunk.position.y = 2.5;
+                treeGroup.add(trunk);
+
+                const branchMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0x0d1a00, 
+                    roughness: 1,
+                    normalMap: new THREE.TextureLoader().load('https://example.com/branch_normal_map.jpg')
+                });
+                for (let j = 0; j < 20; j++) {
+                    const branchGeometry = new THREE.CylinderGeometry(0.05, 0.02, 2, 4);
+                    const branch = new THREE.Mesh(branchGeometry, branchMaterial);
+                    branch.position.y = Math.random() * 4 + 1;
+                    branch.rotation.z = Math.random() * Math.PI;
+                    branch.rotation.y = Math.random() * Math.PI * 2;
+                    treeGroup.add(branch);
+                }
+
+                treeGroup.position.set(
+                    Math.random() * 200 - 100,
+                    0,
+                    Math.random() * 200 - 100
+                );
+                const scale = Math.random() * 0.5 + 0.5;
+                treeGroup.scale.set(scale, scale, scale);
+
+                treeGroup.traverse((child) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                scene.add(treeGroup);
             }
 
             // Buildings (with more post-apocalyptic appearance)
@@ -258,14 +377,112 @@
 
         function setupControls() {
             // ... (controls setup remains the same)
+            document.addEventListener('keydown', onKeyDown, false);
+            document.addEventListener('keyup', onKeyUp, false);
+            document.addEventListener('mousemove', onMouseMove, false);
+            document.addEventListener('click', onMouseClick, false);
+            renderer.domElement.addEventListener('click', () => {
+                renderer.domElement.requestPointerLock();
+            });
         }
 
         function setupJoystick() {
             // ... (joystick setup remains the same)
-        }
+            const joystick = nipplejs.create({
+                zone: document.getElementById('joystick-container'),
+                mode: 'static',
+                position: { left: '50%', bottom: '50%' },
+                color: 'white'
+            });
+
+            joystick.on('move', (evt, data) => {
+                const angle = data.angle.degree;
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+
+                if (angle >= 45 && angle < 135) {
+                    moveForward = true;
+                } else if (angle >= 135 && angle < 225) {
+                  moveLeft = true;
+                } else if (angle >= 225 && angle < 315) {
+                    moveBackward = true;
+                } else {
+                    moveRight = true;
+                }
+            });
+
+            joystick.on('end', () => {
+                moveForward = false;
+                moveBackward = false;
+                moveLeft = false;
+                moveRight = false;
+            });
+                                             }
 
         function setupShootButton() {
             // ... (shoot button setup remains the same)
+            const shootButton = document.getElementById('shoot-button');
+            shootButton.addEventListener('click', shoot);
+            shootButton.addEventListener('touchstart', shoot);
+        }
+u7u
+        function onMouseMove(event) {
+            if (document.pointerLockElement === renderer.domElement) {
+                const movementX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+                const movementY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+                camera.rotation.y -= movementX * 0.002;
+                camera.rotation.x -= movementY * 0.002;
+                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+            }
+        }
+
+        function onMouseClick() {
+            shoot();
+        }
+
+        function onKeyDown(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = true;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = true;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = true;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = true;
+                    break;
+            }
+        }
+
+        function onKeyUp(event) {
+            switch (event.code) {
+                case 'ArrowUp':
+                case 'KeyW':
+                    moveForward = false;
+                    break;
+                case 'ArrowLeft':
+                case 'KeyA':
+                    moveLeft = false;
+                    break;
+                case 'ArrowDown':
+                case 'KeyS':
+                    moveBackward = false;
+                    break;
+                case 'ArrowRight':
+                case 'KeyD':
+                    moveRight = false;
+                    break;
+            }
+        
         }
 
         function loadSound(url) {
@@ -281,7 +498,43 @@
         }
 
         function shoot() {
-            // ... (shooting logic remains similar)
+            // ... (shooting logic remains similar
+            const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+            const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+            bullet.position.set(0, 0, 0);
+            bullet.rotation.copy(camera.rotation);
+            bullet.scale.set(1, 1, 1);
+            camera.add(bullet);
+            scene.add(camera);
+
+            bullet.velocity = new THREE.Vector3(0, 0, -1);
+            bullet.velocity.applyQuaternion(camera.quaternion);
+            bullet.velocity.multiplyScalar(10);
+
+            bullets.push({
+                mesh: bullet,
+                velocity: bullet.velocity,
+                born: performance.now()
+            });
+
+            // Muzzle flash
+            const flashGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+            const flashMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.8 });
+            const flash = new THREE.Mesh(flashGeometry, flashMaterial);
+            flash.position.set(0, 0, -0.5);
+            gun.add(flash);
+
+            setTimeout(() => {
+                gun.remove(flash);
+            }, 50);
+
+            // Recoil effect
+            gun.position.z += 0.1;
+            setTimeout(() => {
+                gun.position.z -= 0.1;
+            }, 50);
+            
             
             // Play gunshot sound with improved handling
             if (gunSound.isPlaying) {
@@ -292,6 +545,16 @@
 
         function updateBullets(delta) {
             // ... (bullet update logic remains the same)
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                bullet.mesh.position.add(bullet.velocity.clone().multiplyScalar(delta));
+
+                // Remove bullets after 1 second
+                if (performance.now() - bullet.born > 1000) {
+                    scene.remove(bullet.mesh);
+                    bullets.splice(i, 1);
+                }
+            }
         }
 
         function animate() {
@@ -366,6 +629,26 @@
         // Helper function to convert color temperature to hex
         function temperatureToHex(kelvin) {
             // ... (temperature to hex conversion remains the same)
+            const temp = kelvin / 100;
+            let red, green, blue;
+
+            if (temp <= 66) {
+                red = 255;
+                green = temp;
+                green = 99.4708025861 * Math.log(green) - 161.1195681661;
+                blue = temp <= 19 ? 0 : temp - 10;
+                blue = 138.5177312231 * Math.log(blue) - 305.0447927307;
+            } else {
+                red = temp - 60;
+                red = 329.698727446 * Math.pow(red, -0.1332047592);
+                green = temp - 60;
+                green = 288.1221695283 * Math.pow(green, -0.0755148492);
+                blue = 255;
+            }
+
+            return ((Math.min(Math.max(red, 0), 255) * 256 * 256) +
+                    (Math.min(Math.max(green, 0), 255) * 256) +
+                    Math.min(Math.max(blue, 0), 255)) | 0;
         }
 
         window.addEventListener('resize', () => {
