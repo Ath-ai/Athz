@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>High-Graphics 3D Ground with Plant</title>
+    <title>High-Graphics 3D Ground with Plant and Sky</title>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -24,7 +24,7 @@
 
         // Ground texture
         const textureLoader = new THREE.TextureLoader();
-        const groundTexture = textureLoader.load('https://i.postimg.cc/xCNKtjQt/TCom-Ground-Forest-Moss02-header.jpg'); // Replace with your texture path
+        const groundTexture = textureLoader.load('https://i.postimg.cc/xCNKtjQt/TCom-Ground-Forest-Moss02-header.jpg');
         groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
         groundTexture.repeat.set(50, 50); // Larger ground texture
 
@@ -39,10 +39,10 @@
         scene.add(ground);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft ambient light
         scene.add(ambientLight);
 
-        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5); // Stronger sunlight
         directionalLight.position.set(10, 50, 30).normalize();
         scene.add(directionalLight);
 
@@ -54,13 +54,25 @@
         const hemisphereLight = new THREE.HemisphereLight(0xaaaaaa, 0x000000, 0.5);
         scene.add(hemisphereLight);
 
-        // Load 3D plant model
+        // Skybox setup
+        const loader = new THREE.CubeTextureLoader();
+        const textureCube = loader.load([
+            'https://example.com/skybox/posx.jpg',
+            'https://example.com/skybox/negx.jpg',
+            'https://example.com/skybox/posy.jpg',
+            'https://example.com/skybox/negy.jpg',
+            'https://example.com/skybox/posz.jpg',
+            'https://example.com/skybox/negz.jpg'
+        ]);
+        scene.background = textureCube;
+
+        // Load 3D grass model
         const gltfLoader = new THREE.GLTFLoader();
-        gltfLoader.load('realtime_grass.glb', (gltf) => { // Replace with your GLB model path
-            const plant = gltf.scene;
-            plant.position.set(0, 0, 0); // Adjust position as needed
-            plant.scale.set(5, 5, 5); // Adjust scale as needed
-            scene.add(plant);
+        gltfLoader.load('realtime_grass.glb', (gltf) => {
+            const grass = gltf.scene;
+            grass.position.set(0, 0, 0); // Adjust position as needed
+            grass.scale.set(10, 10, 10); // Adjust scale as needed
+            scene.add(grass);
         }, undefined, (error) => {
             console.error(error);
         });
