@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>High-Graphics 3D Ground with Zombie</title>
+    <title>High-Graphics 3D Ground with Multiple Grass</title>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -13,7 +13,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/animation/AnimationMixer.js"></script>
     <script>
         // Scene setup
         const scene = new THREE.Scene();
@@ -69,28 +68,22 @@
 
         // Load 3D grass model
         const gltfLoader = new THREE.GLTFLoader();
+        let grassModel;
         gltfLoader.load('realtime_grass.glb', (gltf) => {
-            const grass = gltf.scene;
-            grass.position.set(0, 0, 0); // Adjust position as needed
-            grass.scale.set(10, 10, 10); // Adjust scale as needed
-            scene.add(grass);
-        }, undefined, (error) => {
-            console.error(error);
-        });
+            grassModel = gltf.scene;
+            grassModel.scale.set(2, 2, 2); // Scale down for multiple instances
 
-        // Load 3D zombie model with animation
-        let zombieMixer;
-        gltfLoader.load('zombie_walk_test.glb', (gltf) => { // Replace with the path to your zombie GLB file
-            const zombie = gltf.scene;
-            zombie.position.set(0, 0, 0); // Adjust position as needed
-            zombie.scale.set(1, 1, 1); // Adjust scale as needed
-            scene.add(zombie);
-
-            // Set up animation mixer
-            zombieMixer = new THREE.AnimationMixer(zombie);
-            gltf.animations.forEach((clip) => {
-                zombieMixer.clipAction(clip).play();
-            });
+            // Place multiple grass models on the ground
+            for (let i = 0; i < 500; i++) {
+                const grass = grassModel.clone();
+                grass.position.set(
+                    Math.random() * 500 - 250,
+                    0,
+                    Math.random() * 500 - 250
+                );
+                grass.rotation.y = Math.random() * Math.PI * 2;
+                scene.add(grass);
+            }
         }, undefined, (error) => {
             console.error(error);
         });
@@ -107,7 +100,6 @@
         // Render loop
         function animate() {
             requestAnimationFrame(animate);
-            if (zombieMixer) zombieMixer.update(0.01); // Update zombie animation
             controls.update();
             renderer.render(scene, camera);
         }
