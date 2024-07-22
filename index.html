@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Ground with Plant</title>
+    <title>High-Graphics 3D Ground with Plant</title>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -17,36 +17,49 @@
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio); // For high-resolution displays
         document.body.appendChild(renderer.domElement);
 
         // Ground texture
         const textureLoader = new THREE.TextureLoader();
         const groundTexture = textureLoader.load('https://i.postimg.cc/xCNKtjQt/TCom-Ground-Forest-Moss02-header.jpg'); // Replace with your texture path
         groundTexture.wrapS = groundTexture.wrapT = THREE.RepeatWrapping;
-        groundTexture.repeat.set(10, 10);
+        groundTexture.repeat.set(50, 50); // Larger ground texture
 
-        const groundMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-        const groundGeometry = new THREE.PlaneGeometry(100, 100);
+        const groundMaterial = new THREE.MeshStandardMaterial({
+            map: groundTexture,
+            roughness: 0.8,
+            metalness: 0.2
+        });
+        const groundGeometry = new THREE.PlaneGeometry(500, 500); // Larger ground plane
         const ground = new THREE.Mesh(groundGeometry, groundMaterial);
         ground.rotation.x = - Math.PI / 2;
         scene.add(ground);
 
         // Lighting
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
 
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 10, 7.5);
+        directionalLight.position.set(10, 50, 30).normalize();
         scene.add(directionalLight);
+
+        // Additional lights for realism
+        const pointLight = new THREE.PointLight(0xffffff, 1, 500);
+        pointLight.position.set(50, 50, 50);
+        scene.add(pointLight);
+
+        const hemisphereLight = new THREE.HemisphereLight(0xaaaaaa, 0x000000, 0.5);
+        scene.add(hemisphereLight);
 
         // Load 3D plant model
         const gltfLoader = new THREE.GLTFLoader();
         gltfLoader.load('realtime_grass.glb', (gltf) => { // Replace with your GLB model path
             const plant = gltf.scene;
             plant.position.set(0, 0, 0); // Adjust position as needed
-            plant.scale.set(1, 1, 1); // Adjust scale as needed
+            plant.scale.set(5, 5, 5); // Adjust scale as needed
             scene.add(plant);
         }, undefined, (error) => {
             console.error(error);
@@ -54,8 +67,11 @@
 
         // Controls
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.25;
+        controls.enableZoom = true;
 
-        camera.position.set(0, 10, 20);
+        camera.position.set(0, 100, 200);
         controls.update();
 
         // Render loop
