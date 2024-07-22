@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Realistic 3D Grass</title>
+    <title>3D Grass Scene</title>
     <style>
         body { margin: 0; }
         canvas { display: block; }
@@ -33,7 +33,7 @@
 
         // Load textures
         const textureLoader = new THREE.TextureLoader();
-        const diffuseTexture = textureLoader.load('TCom_Ground_Grass01_header.jpg');
+        const diffuseTexture = textureLoader.load('/mnt/data/TCom_Ground_Grass01_header.jpg');
 
         // Apply textures to the ground material
         const groundMaterial = new THREE.MeshStandardMaterial({
@@ -44,6 +44,27 @@
         ground.rotation.x = -Math.PI / 2;
         ground.receiveShadow = true;
         scene.add(ground);
+
+        // Load grass texture
+        const grassTexture = textureLoader.load('/mnt/data/TCom_Grass19_header.jpg');
+        const grassMaterial = new THREE.MeshBasicMaterial({
+            map: grassTexture,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+
+        // Create multiple grass patches
+        for (let i = 0; i < 50; i++) {
+            const grassGeometry = new THREE.PlaneGeometry(2, 5);
+            const grassPatch = new THREE.Mesh(grassGeometry, grassMaterial);
+            grassPatch.position.set(
+                Math.random() * 100 - 50,
+                2.5,
+                Math.random() * 100 - 50
+            );
+            grassPatch.rotation.y = Math.random() * Math.PI * 2;
+            scene.add(grassPatch);
+        }
 
         // Add ambient light
         const ambientLight = new THREE.AmbientLight(0x404040, 2);
